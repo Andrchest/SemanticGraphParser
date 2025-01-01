@@ -11,7 +11,7 @@ PY_LANGUAGE = Language(tspython.language())
 parser = Parser(PY_LANGUAGE)
 
 # Read the source code to analyze
-with open("tmp_repo/tmp3.py", 'rb') as f:
+with open("My_repo/My_file_1.py", 'rb') as f:
     source_code = f.read()
 
 # Parse the source code to create a syntax tree
