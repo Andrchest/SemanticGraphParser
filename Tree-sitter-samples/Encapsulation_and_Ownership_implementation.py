@@ -120,7 +120,7 @@ def build_encapsulation_and_ownership(repo_path, G):
                     "/".join(path), nesting=counter, color=colors[x['type']],
                     start_byte=x['start_byte'], end_byte=x['end_byte'],
                     start_point=x['start_point'], end_point=x['end_point'],
-                    body=source_code[x['start_byte'] : x['end_byte']]
+                    #body=source_code[x['start_byte'] : x['end_byte']]
                     )
 
             # Add an edge indicating ownership and encapsulation in the hierarchy
@@ -136,6 +136,145 @@ def build_encapsulation_and_ownership(repo_path, G):
         if counter < 0:  # Sanity check for invalid nesting
             print("ERROR!")
 
+#To improve this code delete repeated paerts and write a function which takes a dict and list of its keys 
+def build_import(file_path, G):
+
+    PY_LANGUAGE = Language(tspython.language())
+    parser = Parser(PY_LANGUAGE)
+    tree = parser.parse(bytes(source_code, 'utf-8'))
+
+    # list all files from repo to futher check if an imported file is a installed library
+    # or file from repo
+    repo_files = [file.split('\\')[-1] for file in files_to_parse]
+
+    # 3 types of queries: 1st - simple import: 'import smt' or 'from smth import smt'
+    # 2nd - for aliased import where 'as' exsists
+    # 3rd - for 'from smt import *'
+    query = PY_LANGUAGE.query("""
+    (import_statement
+        name: (dotted_name) @file.name
+    )
+
+    (import_from_statement
+        module_name: (dotted_name) @script.name
+        name: (dotted_name) @imports
+    )              
+    """)
+
+    query_aliased = PY_LANGUAGE.query("""
+    (import_statement
+        name: (aliased_import) @file
+    )
+
+    (import_from_statement
+        module_name: (dotted_name) @script.name
+        name: (aliased_import) @imports
+    )              
+    """)
+
+    query_wildcard = PY_LANGUAGE.query("""
+    (import_from_statement
+        module_name: (dotted_name) @script.name
+        (wildcard_import)
+    )              
+    """)
+
+    captures = query.captures(tree.root_node)
+    captures_aliased = query_aliased.captures(tree.root_node)
+    captures_wildcard = query_wildcard.captures(tree.root_node)
+
+    # define a file name to which we import smth
+    connect_with = file_path.split(chr(92))[-1]
+    #print(connect_with)
+
+    #define a file from which we import
+    source_file = ''
+
+    # list with all imports
+    definitions = []
+
+    # connect 1st type 'import smt'
+    if 'file.name' in captures.keys():
+
+        for file in captures['file.name']:
+            # as script names contains only file name, we take the last part of import: Folder1.smt --> smt.py
+            source_file = source_code[file.start_byte : file.end_byte].replace('.', '/').split('/')[-1]
+            source_file += '.py'
+
+            # if source file is not a installed library like math and so on add an edge
+            if source_file in repo_files:
+                G.add_edge(connect_with, source_file, type="Import")
+
+    # same for other types
+    if 'file' in captures_aliased.keys():
+
+        for file in captures_aliased['file']:
+            source_file = source_code[file.children[0].start_byte : file.children[0].end_byte].replace('.', '/').split('/')[-1]
+            source_file += '.py'
+            if source_file in repo_files:
+                G.add_edge(connect_with, source_file, type="Import")
+
+    if 'script.name' in captures_wildcard.keys():
+        
+        for file in captures_wildcard['script.name']:
+            source_file = source_code[file.start_byte : file.end_byte].replace('.', '/').split('/')[-1]
+            source_file += '.py'
+            if source_file in repo_files:
+                for node in G.out_edges(source_file):
+                    G.add_edge(connect_with, node[1], type="Import")
+
+    # add to definitions elemnets: [type(file or instance in file), name, start_byte for sorting]
+    if 'script.name' in captures.keys():
+
+        for instance in captures['imports']:
+            definitions.append({'type' : 'instance',
+                                'name' : source_code[instance.start_byte : instance.end_byte],
+                                'start_byte' : instance.start_byte,
+                                })
+        
+        for instance in captures['script.name']:
+            definitions.append({'type' : 'file',
+                                'name' : source_code[instance.start_byte : instance.end_byte] \
+                                                        .replace('.', '/').split('/')[-1] + '.py',
+                                'start_byte' : instance.start_byte,
+                                })
+    # same things to aliased
+    if 'script.name' in captures_aliased.keys():
+
+        for instance in captures_aliased['imports']:
+            definitions.append({'type' : 'instance',
+                                'name' : source_code[instance.children[0].start_byte : instance.children[0].end_byte],
+                                'start_byte' : instance.children[0].start_byte,
+                                })
+        
+        for instance in captures_aliased['script.name']:
+            definitions.append({'type' : 'file',
+                                'name' : source_code[instance.start_byte : instance.end_byte] \
+                                                        .replace('.', '/').split('/')[-1] + '.py',
+                                'start_byte' : instance.start_byte,
+                                })
+    
+    # sort array
+    definitions.sort(key=lambda x : x['start_byte'])
+
+    # now it looks like: file, object, object, ..., new_file, new_object ...
+
+    # pprint(definitions)
+    # current_path == node name
+    current_path = []
+
+    for el in definitions:
+        # if el is new file, current_path - its name
+        if el['type'] == 'file': 
+            current_path = [el['name']]
+        else:
+            if current_path[0] in repo_files:
+                # if el is instance and file in repo, current_path - file_name/instance_name
+                current_path.append(el['name'])
+                G.add_edge(connect_with, '/'.join(current_path), type='Import')
+                # clear path for new instance
+                current_path.pop()
+
 
 # dot cant work with code snipets thus remove "body" from nodes parameters ro run
 def print_graph(G):
@@ -143,7 +282,6 @@ def print_graph(G):
     # Extract node attributes (color, nesting) for visualization
     node_labels = nx.get_node_attributes(G, 'nesting')
     node_colors = nx.get_node_attributes(G, 'color')
-    node_names = {node: str(node) for node in G.nodes()}
     edge_labels = nx.get_edge_attributes(G, 'type')
 
     # Create a DOT (graph description) representation
@@ -151,16 +289,23 @@ def print_graph(G):
 
     # Set node styles, colors, and labels
     for node in G.nodes():
-        # Get the first node from the list returned by get_node
         pydot_node = dot.get_node(str(node))[0]
-        pydot_node.set_fillcolor(node_colors[node])
+        pydot_node.set_fillcolor(node_colors.get(node, 'white'))  # Default to white if no color
         pydot_node.set_style("filled")  # Make the node visually filled
         pydot_node.set_label(node.split("/")[-1])  # Label with the last path segment
 
-    # Set edge labels (e.g., ownership relationships)
+    # Set edge labels and styles
     for edge in G.edges():
         pydot_edge = dot.get_edge(str(edge[0]), str(edge[1]))[0]
-        pydot_edge.set_label(edge_labels[(edge[0], edge[1])])
+        edge_type = edge_labels.get((edge[0], edge[1]), 'Unknown')
+        pydot_edge.set_label(edge_type)  # Set edge label to indicate the type
+
+        # Apply special styling for Import edges
+        if edge_type == "Import":
+            pydot_edge.set_style("dashed")  # Dashed lines for imports
+            pydot_edge.set_color("red")  # Red color for import edges
+        else:
+            pydot_edge.set_color("black")  # Default color for other edges
 
     # Save the resulting graph visualization as a PNG image
     dot.write_png('graph.png')
@@ -191,5 +336,12 @@ for file in files_to_parse:
 
     build_encapsulation_and_ownership(file, graph)
 
+
+for file in files_to_parse:
+
+    with open(file, 'r') as f:
+        source_code = f.read()
+
+    build_import(file, graph)
+
 print_graph(graph)
-print_nodes(graph)
