@@ -136,8 +136,46 @@ def build_encapsulation_and_ownership(repo_path, G):
         if counter < 0:  # Sanity check for invalid nesting
             print("ERROR!")
 
-#To improve this code delete repeated paerts and write a function which takes a dict and list of its keys 
+
 def build_import(file_path, G):
+
+    '''
+    The function is used to connect nodes from the statement "import some_name",
+    a variable source_file is the last part of "some_name" because there are no folders and, thus,
+    the name Folder/file_name does not exsists. for_wildcard is optional parameter: by defolt it is false,
+    hence we just build new edges, if for_wildcard is true, we need to connect all "some_name" neighbors with script
+    node
+    '''
+    def for_import(dct, key_name, for_wildcards=False):
+
+        for file in dct[key_name]:
+            # as script names contains only file name, we take the last part of import: Folder1.smt --> smt.py
+            source_file = source_code[file.start_byte : file.end_byte].replace('.', '/').split('/')[-1]
+            source_file += '.py'
+
+            # if source file is not a installed library like math and so on add an edge
+            if source_file in repo_files:
+                if not for_wildcards:
+                    G.add_edge(connect_with, source_file, type="Import")
+                else:
+                    # out_edges: [(source_file, its_neighbor1), ...], so we take the second element
+                    for node in G.out_edges(source_file):
+                        G.add_edge(connect_with, node[1], type="Import")
+
+
+    def for_import_from(dct, key_name, type):
+
+        for instance in dct[key_name]:
+            # define the name of a file or instance, and if it is file add .py
+            name = source_code[instance.start_byte : instance.end_byte]
+            if type == 'file':
+                name = name.replace('.', '/').split('/')[-1] + '.py'
+            
+            definitions.append({'type' : type,
+                                'name' : name,
+                                'start_byte' : instance.start_byte,
+                                })
+            
 
     PY_LANGUAGE = Language(tspython.language())
     parser = Parser(PY_LANGUAGE)
@@ -195,66 +233,32 @@ def build_import(file_path, G):
 
     # connect 1st type 'import smt'
     if 'file.name' in captures.keys():
-
-        for file in captures['file.name']:
-            # as script names contains only file name, we take the last part of import: Folder1.smt --> smt.py
-            source_file = source_code[file.start_byte : file.end_byte].replace('.', '/').split('/')[-1]
-            source_file += '.py'
-
-            # if source file is not a installed library like math and so on add an edge
-            if source_file in repo_files:
-                G.add_edge(connect_with, source_file, type="Import")
+        for_import(captures, 'file.name')
 
     # same for other types
     if 'file' in captures_aliased.keys():
-
-        for file in captures_aliased['file']:
-            source_file = source_code[file.children[0].start_byte : file.children[0].end_byte].replace('.', '/').split('/')[-1]
-            source_file += '.py'
-            if source_file in repo_files:
-                G.add_edge(connect_with, source_file, type="Import")
+        captures_aliased['file'] = [file.children[0] for file in captures_aliased['file']]
+        for_import(captures_aliased, 'file')
 
     if 'script.name' in captures_wildcard.keys():
-        
-        for file in captures_wildcard['script.name']:
-            source_file = source_code[file.start_byte : file.end_byte].replace('.', '/').split('/')[-1]
-            source_file += '.py'
-            if source_file in repo_files:
-                for node in G.out_edges(source_file):
-                    G.add_edge(connect_with, node[1], type="Import")
+        for_import(captures_wildcard, 'script.name', for_wildcards=True)
 
     # add to definitions elemnets: [type(file or instance in file), name, start_byte for sorting]
     if 'script.name' in captures.keys():
 
-        for instance in captures['imports']:
-            definitions.append({'type' : 'instance',
-                                'name' : source_code[instance.start_byte : instance.end_byte],
-                                'start_byte' : instance.start_byte,
-                                })
-        
-        for instance in captures['script.name']:
-            definitions.append({'type' : 'file',
-                                'name' : source_code[instance.start_byte : instance.end_byte] \
-                                                        .replace('.', '/').split('/')[-1] + '.py',
-                                'start_byte' : instance.start_byte,
-                                })
+        for_import_from(captures, 'imports', 'instance')
+        for_import_from(captures, 'script.name', 'file')
+
     # same things to aliased
     if 'script.name' in captures_aliased.keys():
 
-        for instance in captures_aliased['imports']:
-            definitions.append({'type' : 'instance',
-                                'name' : source_code[instance.children[0].start_byte : instance.children[0].end_byte],
-                                'start_byte' : instance.children[0].start_byte,
-                                })
-        
-        for instance in captures_aliased['script.name']:
-            definitions.append({'type' : 'file',
-                                'name' : source_code[instance.start_byte : instance.end_byte] \
-                                                        .replace('.', '/').split('/')[-1] + '.py',
-                                'start_byte' : instance.start_byte,
-                                })
+        # replace node with name: name_aliased with normal one
+        captures_aliased['imports'] = [instance.children[0] for instance in captures_aliased['imports']]
+
+        for_import_from(captures_aliased, 'imports', 'instance')
+        for_import_from(captures_aliased, 'script.name', 'file')
     
-    # sort array
+    # sort the array
     definitions.sort(key=lambda x : x['start_byte'])
 
     # now it looks like: file, object, object, ..., new_file, new_object ...

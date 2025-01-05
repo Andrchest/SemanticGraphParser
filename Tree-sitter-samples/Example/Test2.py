@@ -1,4 +1,5 @@
 from Test1 import Class_form_Test1
+import math
 
 class Class_form_Test2(Class_form_Test1):
 

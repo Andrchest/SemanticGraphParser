@@ -1,6 +1,7 @@
 from os import walk, listdir
 from os.path import isfile
-
+from Folder1.Test6 import func
+import Test2, Test4
 
 def find_files(path):
     global files_to_parse

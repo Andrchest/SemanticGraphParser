@@ -1,4 +1,7 @@
 # Function defined outside of any class
+import Test2
+import Test3
+
 def global_function(message):
     return f"This is a function defined outside of any class: {message}"
 

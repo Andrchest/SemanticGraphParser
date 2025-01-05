@@ -1,4 +1,5 @@
-from math import sqrt
+from math import sqrt, sin
+from Test3 import *
 
 class Class_form_Test1:
 
@@ -10,7 +11,7 @@ class Class_form_Test1:
         print(1)
 
     def own_sqrt(self, val):
-        return sqrt(2 * val)
+        return abs(2 * val)
 
 
 def test1_func(a, b):
