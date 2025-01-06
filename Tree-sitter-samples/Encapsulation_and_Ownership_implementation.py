@@ -1,3 +1,5 @@
+import json
+import os
 from pprint import pprint
 import networkx as nx
 import tree_sitter_python as tspython
@@ -8,7 +10,6 @@ from os.path import isfile
 
 
 def find_files(path):
-
     files = []
 
     for file in listdir(path):
@@ -24,12 +25,11 @@ def find_files(path):
 
 
 def build_encapsulation_and_ownership(repo_path, G):
-
     PY_LANGUAGE = Language(tspython.language())
     parser = Parser(PY_LANGUAGE)
     tree = parser.parse(bytes(source_code, 'utf-8'))
 
-    colors = {'function' : 'orange', 'class' : 'blue', 'script' : 'green'}
+    colors = {'function': 'orange', 'class': 'blue', 'script': 'green'}
 
     query = PY_LANGUAGE.query("""
     (class_definition
@@ -46,7 +46,6 @@ def build_encapsulation_and_ownership(repo_path, G):
 
     captures = query.captures(tree.root_node)
 
-
     for x in captures:
         captures[x].sort(key=lambda x: x.start_byte)
 
@@ -56,23 +55,23 @@ def build_encapsulation_and_ownership(repo_path, G):
         for i in range(len(captures["func.name"])):
             definitions.append(
                 {
-                'name': captures["func.name"][i].text.decode('utf-8'),
-                'start_byte' : captures["func.body"][i].start_byte,
-                'nesting' : 0,
-                'type': 'function',
-                'end_byte' : captures["func.body"][i].end_byte,
-                'start_point' : captures["func.body"][i].start_point,
-                'end_point' : captures["func.body"][i].end_point,
-                'for_sorting' : [captures["func.body"][i].start_byte, 0]
+                    'name': captures["func.name"][i].text.decode('utf-8'),
+                    'start_byte': captures["func.body"][i].start_byte,
+                    'nesting': 0,
+                    'type': 'function',
+                    'end_byte': captures["func.body"][i].end_byte,
+                    'start_point': captures["func.body"][i].start_point,
+                    'end_point': captures["func.body"][i].end_point,
+                    'for_sorting': [captures["func.body"][i].start_byte, 0]
                 }
             )
             definitions.append(
                 {
-                'name' : captures["func.name"][i].text.decode('utf-8'),
-                'end_byte' : captures["func.body"][i].end_byte,
-                'nesting' : 1,
-                'type' : "function",
-                'for_sorting' : [captures["func.body"][i].end_byte, 1]
+                    'name': captures["func.name"][i].text.decode('utf-8'),
+                    'end_byte': captures["func.body"][i].end_byte,
+                    'nesting': 1,
+                    'type': "function",
+                    'for_sorting': [captures["func.body"][i].end_byte, 1]
                 }
             )
 
@@ -80,23 +79,23 @@ def build_encapsulation_and_ownership(repo_path, G):
         for i in range(len(captures["class.name"])):
             definitions.append(
                 {
-                'name': captures["class.name"][i].text.decode('utf-8'),
-                'start_byte' : captures["class.body"][i].start_byte,
-                'nesting' : 0,
-                'type': 'class',
-                'end_byte' : captures["class.body"][i].end_byte,
-                'start_point' : captures["class.body"][i].start_point,
-                'end_point' : captures["class.body"][i].end_point,
-                'for_sorting' : [captures["class.body"][i].start_byte, 0]
+                    'name': captures["class.name"][i].text.decode('utf-8'),
+                    'start_byte': captures["class.body"][i].start_byte,
+                    'nesting': 0,
+                    'type': 'class',
+                    'end_byte': captures["class.body"][i].end_byte,
+                    'start_point': captures["class.body"][i].start_point,
+                    'end_point': captures["class.body"][i].end_point,
+                    'for_sorting': [captures["class.body"][i].start_byte, 0]
                 }
             )
             definitions.append(
                 {
-                'name' : captures["class.name"][i].text.decode('utf-8'),
-                'end_byte' : captures["class.body"][i].end_byte,
-                'nesting' : 1,
-                'type' : "class",
-                'for_sorting' : [captures["class.body"][i].end_byte, 1]
+                    'name': captures["class.name"][i].text.decode('utf-8'),
+                    'end_byte': captures["class.body"][i].end_byte,
+                    'nesting': 1,
+                    'type': "class",
+                    'for_sorting': [captures["class.body"][i].end_byte, 1]
                 }
             )
 
@@ -105,7 +104,7 @@ def build_encapsulation_and_ownership(repo_path, G):
 
     # Initialize the path and counter for constructing the graph hierarchy
     # path - the name of a current file (only name, but not a full path)
-    path = [repo_path.split(chr(92))[-1]] 
+    path = [repo_path.split(chr(92))[-1]]
     counter = 0
     G.add_node(path[0], nesting=counter, color=colors['script'])
 
@@ -117,11 +116,11 @@ def build_encapsulation_and_ownership(repo_path, G):
             path.append(x['name'])
             # body=source_code[x[1] : x[4]]
             G.add_node(
-                    "/".join(path), nesting=counter, color=colors[x['type']],
-                    start_byte=x['start_byte'], end_byte=x['end_byte'],
-                    start_point=x['start_point'], end_point=x['end_point'],
-                    #body=source_code[x['start_byte'] : x['end_byte']]
-                    )
+                "/".join(path), nesting=counter, color=colors[x['type']],
+                start_byte=x['start_byte'], end_byte=x['end_byte'],
+                start_point=x['start_point'], end_point=x['end_point'],
+                # body=source_code[x['start_byte'] : x['end_byte']]
+            )
 
             # Add an edge indicating ownership and encapsulation in the hierarchy
             if len(path) == 2:
@@ -138,7 +137,6 @@ def build_encapsulation_and_ownership(repo_path, G):
 
 
 def build_import(file_path, G):
-
     '''
     The function is used to connect nodes from the statement "import some_name",
     a variable source_file is the last part of "some_name" because there are no folders and, thus,
@@ -146,11 +144,12 @@ def build_import(file_path, G):
     hence we just build new edges, if for_wildcard is true, we need to connect all "some_name" neighbors with script
     node
     '''
+
     def for_import(dct, key_name, for_wildcards=False):
 
         for file in dct[key_name]:
             # as script names contains only file name, we take the last part of import: Folder1.smt --> smt.py
-            source_file = source_code[file.start_byte : file.end_byte].replace('.', '/').split('/')[-1]
+            source_file = source_code[file.start_byte: file.end_byte].replace('.', '/').split('/')[-1]
             source_file += '.py'
 
             # if source file is not a installed library like math and so on add an edge
@@ -162,20 +161,18 @@ def build_import(file_path, G):
                     for node in G.out_edges(source_file):
                         G.add_edge(connect_with, node[1], type="Import")
 
-
     def for_import_from(dct, key_name, type):
 
         for instance in dct[key_name]:
             # define the name of a file or instance, and if it is file add .py
-            name = source_code[instance.start_byte : instance.end_byte]
+            name = source_code[instance.start_byte: instance.end_byte]
             if type == 'file':
                 name = name.replace('.', '/').split('/')[-1] + '.py'
-            
-            definitions.append({'type' : type,
-                                'name' : name,
-                                'start_byte' : instance.start_byte,
+
+            definitions.append({'type': type,
+                                'name': name,
+                                'start_byte': instance.start_byte,
                                 })
-            
 
     PY_LANGUAGE = Language(tspython.language())
     parser = Parser(PY_LANGUAGE)
@@ -223,9 +220,9 @@ def build_import(file_path, G):
 
     # define a file name to which we import smth
     connect_with = file_path.split(chr(92))[-1]
-    #print(connect_with)
+    # print(connect_with)
 
-    #define a file from which we import
+    # define a file from which we import
     source_file = ''
 
     # list with all imports
@@ -245,21 +242,19 @@ def build_import(file_path, G):
 
     # add to definitions elemnets: [type(file or instance in file), name, start_byte for sorting]
     if 'script.name' in captures.keys():
-
         for_import_from(captures, 'imports', 'instance')
         for_import_from(captures, 'script.name', 'file')
 
     # same things to aliased
     if 'script.name' in captures_aliased.keys():
-
         # replace node with name: name_aliased with normal one
         captures_aliased['imports'] = [instance.children[0] for instance in captures_aliased['imports']]
 
         for_import_from(captures_aliased, 'imports', 'instance')
         for_import_from(captures_aliased, 'script.name', 'file')
-    
+
     # sort the array
-    definitions.sort(key=lambda x : x['start_byte'])
+    definitions.sort(key=lambda x: x['start_byte'])
 
     # now it looks like: file, object, object, ..., new_file, new_object ...
 
@@ -269,7 +264,7 @@ def build_import(file_path, G):
 
     for el in definitions:
         # if el is new file, current_path - its name
-        if el['type'] == 'file': 
+        if el['type'] == 'file':
             current_path = [el['name']]
         else:
             if current_path[0] in repo_files:
@@ -280,9 +275,34 @@ def build_import(file_path, G):
                 current_path.pop()
 
 
+def parse_name(name):
+    result = name.replace('.', '/')
+    result = result.replace('::', '.py/')
+    result = result.replace('/(global)', '')
+    return result
+
+
+def build_invoke(G, debugging=0):
+    with open("__temp__.json", "r") as f:
+        data = json.load(f)
+
+    nodes_to_nodes = dict()
+
+    for x in data["graph"]["nodes"].values():
+        node_name = x["name"]
+        graph_node_name = parse_name(node_name)
+        nodes_to_nodes[x["uid"]] = graph_node_name
+
+    for x in data["graph"]["edges"]:
+        node_1 = nodes_to_nodes[x["source"]]
+        node_2 = nodes_to_nodes[x["target"]]
+
+        if node_1 in G.nodes and node_2 in G.nodes:
+            G.add_edge(node_1, node_2, type='Invoke')
+
+
 # dot cant work with code snipets thus remove "body" from nodes parameters ro run
 def print_graph(G):
-
     # Extract node attributes (color, nesting) for visualization
     node_labels = nx.get_node_attributes(G, 'nesting')
     node_colors = nx.get_node_attributes(G, 'color')
@@ -308,6 +328,9 @@ def print_graph(G):
         if edge_type == "Import":
             pydot_edge.set_style("dashed")  # Dashed lines for imports
             pydot_edge.set_color("red")  # Red color for import edges
+        elif edge_type == "Invoke":
+            pydot_edge.set_style("bold")
+            pydot_edge.set_color("green")
         else:
             pydot_edge.set_color("black")  # Default color for other edges
 
@@ -331,21 +354,22 @@ repo_path = input()
 
 files_to_parse = find_files(repo_path)
 
+os.system(f"code2flow {repo_path} -o __temp__.json -q")
+
 graph = nx.DiGraph()
 
 for file in files_to_parse:
-
     with open(file, 'r') as f:
         source_code = f.read()
 
     build_encapsulation_and_ownership(file, graph)
 
-
 for file in files_to_parse:
-
     with open(file, 'r') as f:
         source_code = f.read()
 
     build_import(file, graph)
+
+build_invoke(graph)
 
 print_graph(graph)
