@@ -119,7 +119,7 @@ def build_encapsulation_and_ownership(repo_path, G):
                 "/".join(path), nesting=counter, color=colors[x['type']],
                 start_byte=x['start_byte'], end_byte=x['end_byte'],
                 start_point=x['start_point'], end_point=x['end_point'],
-                # body=source_code[x['start_byte'] : x['end_byte']]
+                body=source_code[x['start_byte'] : x['end_byte']]
             )
 
             # Add an edge indicating ownership and encapsulation in the hierarchy
