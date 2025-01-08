@@ -7,7 +7,7 @@ from PIL import Image  # For image processing
 from fontTools.feaLib.builder import Builder  # For font building
 from tree_sitter import Language, Parser  # For parsing
 from os import listdir  # To list files in a directory
-from os.path import isfile  # To check if a path is a file
+from os.path import isfile, exists  # To check if a path is a file
 from code2flow import code2flow  # To generate call graph
 
 SUPPORTED_LANGAGUES = [".py"]  # Supported programming languages
@@ -38,22 +38,23 @@ EDGES_STYLES = {
 
 class SemanticGraphBuilder:
     def __init__(self):
-        self.graph = nx.DiGraph()  # Initialize a directed graph
+        self.graph = nx.MultiDiGraph()  # Initialize a directed graph
         self.py_language = Language(tspython.language())  # Set up the Python language for parsing
         self.parser = Parser(self.py_language)  # Create a parser for the Python language
 
-    def build_from_repos(self, path_to_repos, *args, **kwargs):
+    def build_from_repos(self, path_to_repos, save_folder, *args, **kwargs):
         # Build the graph from multiple repositories
-        for file in listdir(path_to_repos):
-            self.path_to_repo = file  # Set the current repository path
-            self.build(*args, **kwargs)  # Build the graph
+        folders = [f for f in os.listdir(path_to_repos) if os.path.isdir(os.path.join(path_to_repos, f))]
+        for dir in folders:
+            self.path_to_repo = path_to_repos + "\\" + dir  # Set the current repository path
+            self.build(save_folder, *args, **kwargs)  # Build the graph
 
-    def build_from_one(self, path_to_repo, *args, **kwargs):
+    def build_from_one(self, path_to_repo, save_folder, *args, **kwargs):
         # Build the graph from a single repository
         self.path_to_repo = path_to_repo  # Set the repository path
-        self.build(*args, **kwargs)  # Build the graph
+        self.build(save_folder, *args, **kwargs)  # Build the graph
 
-    def build(self, gprint=False):
+    def build(self, save_folder, gsave=True, gprint=False):
         # Build the semantic graph
         # os.system(f"code2flow {self.path_to_repo} -o __temp__.json -q")  # Generate a flow graph
         code2flow([self.path_to_repo], '__temp__.json', language="py", skip_parse_errors=True)
@@ -61,8 +62,12 @@ class SemanticGraphBuilder:
         self.build_encapsulation_and_ownership()  # Build encapsulation and ownership relationships
         self.build_import()  # Build import relationships
         self.build_invoke()  # Build invoke relationships
+        self.delete_duclicate_edges()
+        if gsave:
+            self.save_graph(save_folder)
         if gprint:
             self.print_graph()  # Print the graph if requested
+        self.end()
 
     def find_files(self, path):
         # Find all supported files in the given path
@@ -81,7 +86,7 @@ class SemanticGraphBuilder:
     def build_encapsulation_and_ownership(self):
         # Build encapsulation and ownership relationships from parsed files
         for file in self.files_to_parse:
-            with open(file, 'r') as f:
+            with open(file, 'r', errors='ignore') as f:
                 source_code = f.read()  # Read the source code from the file
             tree = self.parser.parse(bytes(source_code, 'utf-8'))  # Parse the source code
 
@@ -172,20 +177,21 @@ class SemanticGraphBuilder:
         # Construct the semantic graph from definitions
         counter = 0  # Initialize nesting counter
 
-        path_to_object = [source.split(chr(92))[-1]]  # Get the source file name
+        path_to_object = [source.replace('\\', '/').replace(':', '.')]  # Get the source file name
         self.graph.add_node(path_to_object[0], nesting=counter, color=NODES_COLORS['script'])  # Add the script node
 
         # Construct the graph by traversing the definitions
-        for x in definitions:
-            if x['nesting'] == 0:  # Entering a new scope
+        for object in definitions:
+            if object['nesting'] == 0:  # Entering a new scope
                 counter += 1  # Increase nesting level
-                path_to_object.append(x['name'])  # Add the current definition name to the path
+                path_to_object.append(object['name'])  # Add the current definition name to the path
 
                 # Add a node for the current definition
                 self.graph.add_node(
-                    "/".join(path_to_object), nesting=counter, color=NODES_COLORS[x['type']],
-                    start_byte=x['start_byte'], end_byte=x['end_byte'],
-                    start_point=x['start_point'], end_point=x['end_point'],
+                    "/".join(path_to_object), nesting=counter, color=NODES_COLORS[object['type']],
+                    start_byte=object['start_byte'], end_byte=object['end_byte'],
+                    start_point=object['start_point'], end_point=object['end_point'],
+                    # body ????
                 )
 
                 # Add an edge indicating ownership and encapsulation in the hierarchy
@@ -194,7 +200,7 @@ class SemanticGraphBuilder:
                 else:
                     self.graph.add_edge("/".join(path_to_object[:-1]), "/".join(path_to_object), type="Ownership")
 
-            if x['nesting'] == 1:  # Exiting the current scope
+            if object['nesting'] == 1:  # Exiting the current scope
                 counter -= 1  # Decrease nesting level
                 path_to_object.pop()  # Remove the last definition from the path
 
@@ -204,11 +210,11 @@ class SemanticGraphBuilder:
     def build_import(self):
         # Build import relationships from parsed files
         for file in self.files_to_parse:
-            with open(file, 'r') as f:
+            with open(file, 'r', errors='ignore') as f:
                 source_code = f.read()  # Read the source code from the file
             tree = self.parser.parse(bytes(source_code, 'utf-8'))  # Parse the source code
-            repo_files = [file.split('\\')[-1] for file in self.files_to_parse]  # Get the list of repository files
-
+            repo_files = [file.replace("\\", '/').replace(':', '.') for file in
+                          self.files_to_parse]  # Get the list of repository files
             # Define queries to capture import statements
             query = self.py_language.query("""
             (import_statement
@@ -244,7 +250,7 @@ class SemanticGraphBuilder:
             captures_aliased = query_aliased.captures(tree.root_node)
             captures_wildcard = query_wildcard.captures(tree.root_node)
 
-            connect_with = file.split(chr(92))[-1]  # Get the current file name
+            connect_with = file.replace('\\', '/').replace(':', '.')  # Get the current file name
             source_file = ''  # Initialize source file variable
 
             definitions = []  # Initialize definitions list
@@ -265,36 +271,48 @@ class SemanticGraphBuilder:
 
             # Process imports from specific modules
             if 'script.name' in captures.keys():
-                self.for_import_from(captures, 'imports', 'instance', source_code, definitions)
-                self.for_import_from(captures, 'script.name', 'file', source_code, definitions)
+                self.for_import_from(captures, 'imports', 'instance', source_code, definitions, file)
+                self.for_import_from(captures, 'script.name', 'file', source_code, definitions, file)
 
             # Process imports from aliased modules
             if 'script.name' in captures_aliased.keys():
                 captures_aliased['imports'] = [instance.children[0] for instance in captures_aliased['imports']]
-                self.for_import_from(captures_aliased, 'imports', 'instance', source_code, definitions)
-                self.for_import_from(captures_aliased, 'script.name', 'file', source_code, definitions)
+                self.for_import_from(captures_aliased, 'imports', 'instance', source_code, definitions, file)
+                self.for_import_from(captures_aliased, 'script.name', 'file', source_code, definitions, file)
 
             definitions.sort(key=lambda x: x['start_byte'])  # Sort definitions by start byte
 
             current_path = []  # Initialize current path for imports
 
-            for el in definitions:
+            for object in definitions:
                 # If el is a new file, set current_path to its name
-                if el['type'] == 'file':
-                    current_path = [el['name']]
+                if object['type'] == 'file':
+                    current_path = [object['name']]
                 else:
                     if current_path[0] in repo_files:
                         # If el is an instance and the file is in the repo, update current_path
-                        current_path.append(el['name'])
+                        current_path.append(object['name'])
                         self.graph.add_edge(connect_with, '/'.join(current_path), type='Import')  # Add import edge
                         current_path.pop()  # Clear path for new instance
+
+    def define_file_path(self, name, current_path):
+        # define a path to folder in which file is located (file means "file to which we import)
+        folder = '\\'.join(current_path.split('\\')[:-1]).replace('.', ':')
+
+        # check if in this folder exsists something similar to import
+        if exists(folder + '\\' + name + '.py'):
+            # if it exsists, connect it
+            return folder.replace('\\', '/').replace(':', '.') + '/' + name + '.py'
+
+        # in other case it should be located at the highest level
+        return self.path_to_repo.replace('\\', '/').replace(':', '.') + '/' + name + '.py'
 
     def for_import(self, dct, key_name, source_code, repo_files, connect_with, for_wildcards=False):
         # Process import statements and add edges to the graph
         for file in dct[key_name]:
             # Extract the source file name from the import statement
-            source_file = source_code[file.start_byte: file.end_byte].replace('.', '/').split('/')[-1]
-            source_file += '.py'  # Append .py extension
+            source_file = self.define_file_path(source_code[file.start_byte: file.end_byte].replace('.', '/'),
+                                                connect_with)
 
             # If the source file is in the repository files, add an edge
             if source_file in repo_files:
@@ -305,13 +323,14 @@ class SemanticGraphBuilder:
                     for node in self.graph.out_edges(source_file):
                         self.graph.add_edge(connect_with, node[1], type="Import")  # Add import edge to neighbors
 
-    def for_import_from(self, dct, key_name, type, source_code, definitions):
+    def for_import_from(self, dct, key_name, type, source_code, definitions, path):
         # Process imports from specific modules and add to definitions
         for instance in dct[key_name]:
             # Define the name of a file or instance, and add .py if it's a file
             name = source_code[instance.start_byte: instance.end_byte]
             if type == 'file':
-                name = name.replace('.', '/').split('/')[-1] + '.py'  # Format the file name
+                name = self.define_file_path(name.replace('.', '/'), path)
+            # Format the file name
 
             # Append the definition to the definitions list
             definitions.append({
@@ -321,33 +340,79 @@ class SemanticGraphBuilder:
             })
 
     def parse_name(self, name):
-        # Convert a name into a format suitable for the graph
-        result = name.replace('.', '/')  # Replace dots with slashes
-        result = result.replace('::', '.py/')  # Replace '::' with '.py/'
-        result = result.replace('/(global)', '')  # Remove '(global)' from the path
-        return result  # Return the formatted name
+        result = []  # List to store matching node names
+        # Format the name for the graph
+        partial_name = name.replace('.', '/')  # Replace dots with slashes
+        partial_name = partial_name.replace('::', '.py/')  # Replace '::' with '.py/'
+        partial_name = partial_name.replace('/(global)', '')  # Remove '(global)'
+
+        for element in self.graph.nodes:
+            if element.endswith(partial_name):  # Check if node matches the formatted name
+                result.append(element)  # Add matching node to the result
+
+        return result  # Return the list of matching nodes
+
+    def find_file_in_path(self, full_name):
+        path = full_name.split("/")  # Split the full name into components
+        for i in range(len(path) - 1, -1, -1):
+            if "." in path[i]:  # Check for a file component
+                return "/".join(path[:i + 1])  # Return the path up to the file
 
     def build_invoke(self, debugging=0):
         # Build invoke relationships from a temporary JSON file
-        with open("__temp__.json", "r") as f:
+        with open("__temp__.json", "r", errors='ignore') as f:
             data = json.load(f)  # Load the JSON data
 
         nodes_to_nodes = dict()  # Dictionary to map node UIDs to graph node names
 
+        if debugging:
+            pprint(data)  # Print the loaded JSON data if debugging is enabled
+
         # Map each node in the JSON data to its corresponding graph node name
-        for x in data["graph"]["nodes"].values():
-            node_name = x["name"]
+        for node in data["graph"]["nodes"].values():
+            node_name = node["name"]  # Get the node name from JSON
             graph_node_name = self.parse_name(node_name)  # Parse the node name
-            nodes_to_nodes[x["uid"]] = graph_node_name  # Store the mapping
+            nodes_to_nodes[node["uid"]] = graph_node_name  # Store the mapping
+
+        if debugging:
+            pprint(nodes_to_nodes)  # Print the mapping of UIDs to node names if debugging is enabled
 
         # Create edges in the graph based on the invoke relationships in the JSON data
-        for x in data["graph"]["edges"]:
-            node_1 = nodes_to_nodes[x["source"]]  # Get the source node name
-            node_2 = nodes_to_nodes[x["target"]]  # Get the target node name
+        for node in data["graph"]["edges"]:
+            node_1_names = nodes_to_nodes[node["source"]]  # Get the source node name(s)
+            node_2_names = nodes_to_nodes[node["target"]]  # Get the target node name(s)
+
+            if debugging:
+                pprint(node_1_names)  # Print source node names if debugging
+                pprint(node_2_names)  # Print target node names if debugging
+                pprint(self.graph.nodes)  # Print current graph nodes if debugging
+                print("------------------------------------------------------")
 
             # Add an edge if both nodes exist in the graph
-            if node_1 in self.graph.nodes and node_2 in self.graph.nodes:
-                self.graph.add_edge(node_1, node_2, type='Invoke')  # Add invoke edge
+            for node_1 in node_1_names:
+                for node_2 in node_2_names:
+                    if debugging:
+                        pprint(self.find_file_in_path(node_1))  # Print the file path for node_1 if debugging
+                        pprint(nx.ancestors(self.graph, node_2))  # Print ancestors of node_2 if debugging
+                        print("<<<------------------------------------------------>>>")
+                    # Check if node_1 is an ancestor of node_2
+                    if self.find_file_in_path(node_1) in nx.ancestors(self.graph, node_2):
+                        # Add an edge if both nodes exist in the graph
+                        if node_1 in self.graph.nodes and node_2 in self.graph.nodes:
+                            self.graph.add_edge(node_1, node_2, type='Invoke')  # Add invoke edge
+
+    def delete_duplicate_edges(self):
+        # Create a list of unique edges by converting them to a set
+        new_edges = list(set([(a, b, tuple(c.values())) for a, b, c in list(self.graph.edges(data=True))]))
+
+        # Convert the unique edges back to the required format with a dictionary
+        new_edges = [(a, b, dict(zip(["type"], c))) for a, b, c in new_edges]
+
+        # Clear all existing edges from the graph
+        self.graph.clear_edges()
+
+        # Add the unique edges back to the graph
+        self.graph.add_edges_from(new_edges)
 
     def print_graph(self):
         # Extract node attributes (color, nesting) for visualization
@@ -366,46 +431,44 @@ class SemanticGraphBuilder:
             pydot_node.set_label(node.split("/")[-1])  # Label with the last path segment
 
         # Set edge labels and styles
-        for edge in self.graph.edges():
-            pydot_edge = dot.get_edge(str(edge[0]), str(edge[1]))[
-                0]  # Get the corresponding edge in the DOT representation
-            edge_type = edge_labels.get((edge[0], edge[1]), 'Unknown')  # Get the edge type
+        for edge in self.graph.edges(keys=True):
+            source, target, key = edge  # Extract source, target, and key for MultiDiGraph edges
+            edge_type = self.graph.edges[source, target, key].get('type', 'Unknown')  # Get the edge type
+            edge_color = EDGES_COLORS.get(edge_type, "black")  # Get the edge color based on the type
+            edge_style = EDGES_STYLES.get(edge_type, "solid")  # Get the edge style based on the type
 
+            # Get the corresponding edge in the DOT representation
+            pydot_edge = dot.get_edge(str(source), str(target))[key]
+
+            # Apply attributes to the edge
             pydot_edge.set_label(edge_type)  # Set edge label to indicate the type
-
-            # Apply special styling for different edge types
-            if edge_type == "Encapsulation":
-                pydot_edge.set_style(EDGES_STYLES["Encapsulation"])  # Set style for encapsulation edges
-                pydot_edge.set_color(EDGES_COLORS["Encapsulation"])  # Set color for encapsulation edges
-            elif edge_type == "Ownership":
-                pydot_edge.set_style(EDGES_STYLES["Ownership"])  # Set style for ownership edges
-                pydot_edge.set_color(EDGES_COLORS["Ownership"])  # Set color for ownership edges
-            elif edge_type == "Import":
-                pydot_edge.set_style(EDGES_STYLES["Import"])  # Set style for import edges
-                pydot_edge.set_color(EDGES_COLORS["Import"])  # Set color for import edges
-            elif edge_type == "Invoke":
-                pydot_edge.set_style(EDGES_STYLES["Invoke"])  # Set style for invoke edges
-                pydot_edge.set_color(EDGES_COLORS["Invoke"])  # Set color for invoke edges
-            else:
-                pydot_edge.set_color("black")  # Default color for other edges
+            pydot_edge.set_style(edge_style)  # Set style for the edge
+            pydot_edge.set_color(edge_color)  # Set color for the edge
 
         # Save the resulting graph visualization as a PNG image
         png_name = f'{self.path_to_repo.split(chr(92))[-1]}.png'  # Generate PNG file name
-
         dot.write_png(png_name)  # Write the DOT representation to a PNG file
-
+        #
         # Optionally, display the generated graph image
         img = Image.open(png_name)  # Open the generated PNG image
         img.show()  # Display the image
+
+    def save_graph(self, save_folder):
+        name = f'{self.path_to_repo.split(chr(92))[-1]}.gml'
+        nx.write_gml(self.graph, save_folder + "//" + name)
 
     def print_nodes(self):
         # Print each node and its attributes in the graph
         for node in self.graph.nodes:
             print(node, '-------------------->', self.graph.nodes[node])  # Print node and its attributes
 
+    def end(self):
+        os.remove("__temp__.json")
+
 
 if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one(input(), gprint=True)  # Call the build method with user input and enable graph printing
+    builder.build_from_one(input(), "graphs", gsave=True,
+                           gprint=True)  # Call the build method with user input and enable graph printing
