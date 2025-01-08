@@ -62,7 +62,7 @@ class SemanticGraphBuilder:
         self.build_encapsulation_and_ownership()  # Build encapsulation and ownership relationships
         self.build_import()  # Build import relationships
         self.build_invoke()  # Build invoke relationships
-        self.delete_duclicate_edges()
+        self.delete_duplicate_edges()
         if gsave:
             self.save_graph(save_folder)
         if gprint:
