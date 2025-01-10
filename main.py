@@ -10,7 +10,7 @@ from os import listdir  # To list files in a directory
 from os.path import isfile, exists  # To check if a path is a file
 from code2flow import code2flow  # To generate call graph
 
-SUPPORTED_LANGAGUES = [".py"]  # Supported programming languages
+SUPPORTED_LANGUAGES = [".py"]  # Supported programming languages
 
 # Node colors for the graph
 NODES_COLORS = {
@@ -24,7 +24,8 @@ EDGES_COLORS = {
     'Encapsulation': 'blue',
     'Ownership': 'gold',
     'Import': 'red',
-    'Invoke': 'green'
+    'Invoke': 'green',
+    'Class Hierarchy': 'pink'
 }
 
 # Edge styles for the graph
@@ -32,7 +33,8 @@ EDGES_STYLES = {
     'Encapsulation': 'bold',
     'Ownership': 'bold',
     'Import': 'dashed',
-    'Invoke': 'bold'
+    'Invoke': 'bold',
+    'Class Hierarchy': 'dashed'
 }
 
 
@@ -62,6 +64,7 @@ class SemanticGraphBuilder:
         self.build_encapsulation_and_ownership()  # Build encapsulation and ownership relationships
         self.build_import()  # Build import relationships
         self.build_invoke()  # Build invoke relationships
+        self.build_class_hierarchy()  # Build class hierarchy relationships
         self.delete_duplicate_edges()
         if gsave:
             self.save_graph(save_folder)
@@ -76,7 +79,7 @@ class SemanticGraphBuilder:
         for file in listdir(path):
             current_instance = path + "\\" + file  # Construct the full file path
 
-            if isfile(current_instance) and file[-3:] in SUPPORTED_LANGAGUES:
+            if isfile(current_instance) and file[-3:] in SUPPORTED_LANGUAGES:
                 files.append(current_instance)  # Add supported files to the list
             elif not isfile(current_instance):
                 files.extend(self.find_files(current_instance))  # Recursively find files in subdirectories
@@ -299,9 +302,9 @@ class SemanticGraphBuilder:
         # define a path to folder in which file is located (file means "file to which we import)
         folder = '\\'.join(current_path.split('\\')[:-1]).replace('.', ':')
 
-        # check if in this folder exsists something similar to import
+        # check if in this folder exists something similar to import
         if exists(folder + '\\' + name + '.py'):
-            # if it exsists, connect it
+            # if it exists, connect it
             return folder.replace('\\', '/').replace(':', '.') + '/' + name + '.py'
 
         # in other case it should be located at the highest level
@@ -345,7 +348,6 @@ class SemanticGraphBuilder:
         partial_name = name.replace('.', '/')  # Replace dots with slashes
         partial_name = partial_name.replace('::', '.py/')  # Replace '::' with '.py/'
         partial_name = partial_name.replace('/(global)', '')  # Remove '(global)'
-
         for element in self.graph.nodes:
             if element.endswith(partial_name):  # Check if node matches the formatted name
                 result.append(element)  # Add matching node to the result
@@ -400,6 +402,50 @@ class SemanticGraphBuilder:
                         # Add an edge if both nodes exist in the graph
                         if node_1 in self.graph.nodes and node_2 in self.graph.nodes:
                             self.graph.add_edge(node_1, node_2, type='Invoke')  # Add invoke edge
+
+
+    def build_class_hierarchy(self):
+        for file in self.files_to_parse:
+            with open(file, 'r', errors='ignore') as f:
+                source_code = f.read()  # Read the source code from the file
+            tree = self.parser.parse(bytes(source_code, 'utf-8'))  # Parse the source code
+
+            # Define a query to capture class and function definitions
+            query = self.py_language.query("""
+            (class_definition
+                name: (identifier) @class.name
+                superclasses: (argument_list (identifier) @class.parents)?
+                body: (block) @class.body
+            )
+            """)
+
+            captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
+
+            for x in captures:
+                captures[x].sort(key=lambda x: x.start_point)  # Sort captures by start byte
+
+            name_body = dict()
+
+            if "class.parents" in captures.keys():
+                for i in range(len(captures["class.name"])):
+                    name_body[captures["class.name"][i]] = captures["class.body"][i]
+
+                i, j = 0, 0
+
+                while j < len(captures["class.parents"]):
+                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte < name_body[captures["class.name"][i]].start_byte:
+                        child_name = captures["class.name"][i].text.decode('utf-8')
+                        parent_name = captures["class.parents"][j].text.decode('utf-8')
+                        child_path = f"{file.replace(':', '.')}/{child_name}".replace('\\', '/')
+                        parent_path = self.parse_name(parent_name)[-1]
+
+                        # Add edges to represent class hierarchy
+                        self.graph.add_edge(child_path, parent_path, type='Class Hierarchy')
+                        j += 1
+                    else:
+                        i += 1
+
+
 
     def delete_duplicate_edges(self):
         # Create a list of unique edges by converting them to a set
@@ -470,5 +516,6 @@ if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
+
     builder.build_from_one(input(), "graphs", gsave=True,
                            gprint=True)  # Call the build method with user input and enable graph printing
