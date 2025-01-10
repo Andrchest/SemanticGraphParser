@@ -10,7 +10,7 @@ from os import listdir  # To list files in a directory
 from os.path import isfile, exists  # To check if a path is a file
 from code2flow import code2flow  # To generate call graph
 
-SUPPORTED_LANGAGUES = [".py"]  # Supported programming languages
+SUPPORTED_LANGAUGUES = [".py"]  # Supported programming languages
 
 # Node colors for the graph
 NODES_COLORS = {
@@ -86,7 +86,7 @@ class SemanticGraphBuilder:
         for file in listdir(path):
             current_instance = path + "\\" + file  # Construct the full file path
 
-            if isfile(current_instance) and file[-3:] in SUPPORTED_LANGAGUES:
+            if isfile(current_instance) and file[-3:] in SUPPORTED_LANGAUGUES:
                 files.append(current_instance)  # Add supported files to the list
             elif not isfile(current_instance):
                 files.extend(self.find_files(current_instance))  # Recursively find files in subdirectories
