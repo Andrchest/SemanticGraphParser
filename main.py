@@ -349,7 +349,7 @@ class SemanticGraphBuilder:
         partial_name = partial_name.replace('::', '.py/')  # Replace '::' with '.py/'
         partial_name = partial_name.replace('/(global)', '')  # Remove '(global)'
         for element in self.graph.nodes:
-            if element.endswith(partial_name):  # Check if node matches the formatted name
+            if element.endswith("/" + partial_name):  # Check if node matches the formatted name
                 result.append(element)  # Add matching node to the result
 
         return result  # Return the list of matching nodes
@@ -437,10 +437,13 @@ class SemanticGraphBuilder:
                         child_name = captures["class.name"][i].text.decode('utf-8')
                         parent_name = captures["class.parents"][j].text.decode('utf-8')
                         child_path = f"{file.replace(':', '.')}/{child_name}".replace('\\', '/')
-                        parent_path = self.parse_name(parent_name)[-1]
+                        print(1, parent_name)
+                        parent_path = self.parse_name(parent_name)
+                        if len(parent_path):
+                            # Add edges to represent class hierarchy
+                            self.graph.add_edge(child_path, parent_path[-1], type='Class Hierarchy')
+                        print(2, parent_path)
 
-                        # Add edges to represent class hierarchy
-                        self.graph.add_edge(child_path, parent_path, type='Class Hierarchy')
                         j += 1
                     else:
                         i += 1
