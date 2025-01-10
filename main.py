@@ -10,7 +10,7 @@ from os import listdir  # To list files in a directory
 from os.path import isfile, exists  # To check if a path is a file
 from code2flow import code2flow  # To generate call graph
 
-SUPPORTED_LANGAUGUES = [".py"]  # Supported programming languages
+SUPPORTED_LANGUAGES = [".py"]  # Supported programming languages
 
 # Node colors for the graph
 NODES_COLORS = {
