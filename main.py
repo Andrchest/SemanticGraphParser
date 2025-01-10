@@ -86,7 +86,7 @@ class SemanticGraphBuilder:
         for file in listdir(path):
             current_instance = path + "\\" + file  # Construct the full file path
 
-            if isfile(current_instance) and file[-3:] in SUPPORTED_LANGAUGUES:
+            if isfile(current_instance) and file[-3:] in SUPPORTED_LANGUAGES:
                 files.append(current_instance)  # Add supported files to the list
             elif not isfile(current_instance):
                 files.extend(self.find_files(current_instance))  # Recursively find files in subdirectories
