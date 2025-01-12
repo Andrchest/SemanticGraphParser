@@ -61,13 +61,13 @@ class SemanticGraphBuilder:
         for file in self.files_to_parse:
             dct[file] = 0
         return dct
-    
+
     def build(self, save_folder, gsave=False, gprint=False):
         # Build the semantic graph
         # os.system(f"code2flow {self.path_to_repo} -o __temp__.json -q")  # Generate a flow graph
         code2flow([self.path_to_repo], '__temp__.json', language="py", skip_parse_errors=True)
         self.files_to_parse = self.find_files(self.path_to_repo)
-        self.already_checked = self.define_files_for_check() # Find files to parse
+        self.already_checked = self.define_files_for_check()  # Find files to parse
         self.build_encapsulation_and_ownership()  # Build encapsulation and ownership relationships
         self.build_import()  # Build import relationships
         self.build_invoke()  # Build invoke relationships
@@ -116,8 +116,8 @@ class SemanticGraphBuilder:
 
             captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
 
-            for x in captures:
-                captures[x].sort(key=lambda x: x.start_byte)  # Sort captures by start byte
+            for el in captures:
+                captures[el].sort(key=lambda x: x.start_byte)  # Sort captures by start byte
 
             definitions = []  # Initialize a list to hold definitions
 
@@ -223,7 +223,7 @@ class SemanticGraphBuilder:
             self.already_checked[file] = 1
             # Construnct import edges for the file
             self.construct_import_for_file(file)
-    
+
     def construct_import_for_file(self, file):
         # Initialize array to collect all imports of a current file and imports of the "imported" files 
         # (nested imports)
@@ -232,12 +232,12 @@ class SemanticGraphBuilder:
         # Read the code and then parse it
         with open(file, 'r', errors='ignore') as f:
             source_code = f.read()
-        
+
         tree = self.parser.parse(bytes(source_code, 'utf-8'))
 
         # Initialize the list of all files with rewritten names
         repo_files = [file.replace("\\", '/').replace(':', '.') for file in
-                    self.files_to_parse]
+                      self.files_to_parse]
 
         # Define queries: 
         # query - standart "import" or "from smt import smt" 
@@ -298,31 +298,31 @@ class SemanticGraphBuilder:
 
         if 'file' in captures_aliased.keys():
             captures_aliased['file'] = [file.children[0] for file in captures_aliased['file']]
-            instances_to_connect += self.for_import(captures_aliased, 'file', 
+            instances_to_connect += self.for_import(captures_aliased, 'file',
                                                     source_code, repo_files, connect_with)
 
         if 'script.name' in captures_wildcard.keys():
-            instances_to_connect += self.for_import(captures_wildcard, 'script.name', 
+            instances_to_connect += self.for_import(captures_wildcard, 'script.name',
                                                     source_code, repo_files, connect_with, for_wildcards=True)
 
         if 'script.name' in captures.keys():
-            instances_to_connect += self.for_import_from(captures, 
-                                                        'imports', 'instance', source_code, definitions, file)
             instances_to_connect += self.for_import_from(captures,
-                                                        'script.name', 'file', source_code, definitions, file)
+                                                         'imports', 'instance', source_code, definitions, file)
+            instances_to_connect += self.for_import_from(captures,
+                                                         'script.name', 'file', source_code, definitions, file)
 
         if 'script.name' in captures_aliased.keys():
             captures_aliased['imports'] = [instance.children[0] for instance in captures_aliased['imports']]
             instances_to_connect += self.for_import_from(captures_aliased,
-                                                        'imports', 'instance', source_code, definitions, file)
+                                                         'imports', 'instance', source_code, definitions, file)
             instances_to_connect += self.for_import_from(captures_aliased,
-                                                        'script.name', 'file', source_code, definitions, file)
+                                                         'script.name', 'file', source_code, definitions, file)
 
         if 'script.name' in captures_with_dots.keys():
             instances_to_connect += self.for_import_from(captures_with_dots,
-                                                        'imports', 'instance', source_code, definitions, file)
+                                                         'imports', 'instance', source_code, definitions, file)
             instances_to_connect += self.for_import_from(captures_with_dots,
-                                                        'script.name', 'file', source_code, definitions, file)
+                                                         'script.name', 'file', source_code, definitions, file)
 
         definitions.sort(key=lambda x: x['start_byte'])  # Sort definitions by start byte
 
@@ -351,21 +351,21 @@ class SemanticGraphBuilder:
         # Add edges from the nested imports
         for object in instances_to_connect:
             self.graph.add_edge(connect_with, object, type='Import')
-        
+
         # Pass the list of current file imports for the next file, if the func was called recursively
-        return  instances_to_connect
+        return instances_to_connect
 
     def define_file_path(self, name, current_path):
         # Define a path to folder in which file is located (file means "file to which we import)
         folder = '\\'.join(current_path.split('\\')[:-1]).replace('.', ':')
-        
+
         # If the file name contain dots, go tho the upper folders from the current one
         while len(name) != 0 and name[0] == '.':
             # Delete one dot form the name
             name = name[1:]
             # Go upper on one level from the folder
             folder = '\\'.join(folder.split('\\')[:-1])
-        
+
         # Check if in the file name exsists on the current folder level
         if exists(folder + '\\' + name + '.py'):
             # If it exsists, connect it
@@ -374,13 +374,13 @@ class SemanticGraphBuilder:
         # Check if the file name exsists on a higher level
         if exists('\\'.join(folder.split('\\')[:-1]) + '\\' + name + '.py'):
             return '/'.join(folder.split('\\')[:-1]).replace(':', '.') + '/' + name.replace('\\', '/') + '.py'
-        
+
         # In other case it should be located at the highest level
         return self.path_to_repo.replace('\\', '/').replace(':', '.') + '/' + name.replace('\\', '/') + '.py'
 
     def for_import(self, dct, key_name, source_code, repo_files, connect_with, for_wildcards=False):
         # Process import statements and add edges to the graph
-        for_future_connection = [] # Initialize the list of imports
+        for_future_connection = []  # Initialize the list of imports
 
         for file in dct[key_name]:
             # Extract the source file name from the import statement
@@ -398,10 +398,10 @@ class SemanticGraphBuilder:
                     self.already_checked[file_name] = 1
                     for_future_connection += self.construct_import_for_file(file_name)
                 # If its status is "in progress" rise an error of circular import
-                elif self.already_checked[file_name] == 1: 
+                elif self.already_checked[file_name] == 1:
                     # Define the last two names of the circle
                     raise RuntimeError(str(connect_with) + " " + str(file_name))
-                
+
                 # If file is imported with wildcard, connect all its instances with the current file
                 if not for_wildcards:
                     self.graph.add_edge(connect_with, source_file, type="Import")
@@ -409,7 +409,7 @@ class SemanticGraphBuilder:
                 else:
                     # For wildcard imports, connect to all out edges of the source file
                     for node in self.graph.out_edges(source_file):
-                        self.graph.add_edge(connect_with, node[1], type="Import") 
+                        self.graph.add_edge(connect_with, node[1], type="Import")
                         for_future_connection.append(node[1])
                 self.additional_imports(source_file, connect_with, [])
 
@@ -428,7 +428,7 @@ class SemanticGraphBuilder:
                 while len(name) != 0 and name[0] == '.':
                     prefix_dots_count += 1
                     name = name[1:]
-                
+
                 # Define the path to the file and its "normal name" in the system
                 name = self.define_file_path('.' * (prefix_dots_count - 1) + (name.replace('.', '\\')), path)
                 file_name = name.replace('.', ':').replace('/', chr(92))[:-3] + '.py'
@@ -448,7 +448,7 @@ class SemanticGraphBuilder:
             })
 
         return for_future_connection
-    
+
     def additional_imports(self, name, connect_with, to_connect, namespace=None):
         # If name is file connect all its imports with the current file
         if name.split('/')[-1][-3:] == '.py':
@@ -477,7 +477,7 @@ class SemanticGraphBuilder:
                         self.graph.add_edge(connect_with, imp, type="Import")
                     elif imp[-3:] == '.py':
                         self.additional_imports(name, connect_with, to_connect, namespace=imp)
- 
+
     def parse_name(self, name):
         result = []  # List to store matching node names
         # Format the name for the graph
@@ -557,28 +557,31 @@ class SemanticGraphBuilder:
 
             captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
 
-            for x in captures:
-                captures[x].sort(key=lambda x: x.start_point)  # Sort captures by start byte
+            for el in captures:
+                captures[el].sort(key=lambda x: x.start_point)  # Sort captures by start byte
 
-            name_body = dict()
-
+            # if there are child classes in current file, extract their parents
             if "class.parents" in captures.keys():
+                name_body = dict()  # dict to store the parameters of body of each class
+
                 for i in range(len(captures["class.name"])):
                     name_body[captures["class.name"][i]] = captures["class.body"][i]
 
+                # use Two pointers technique to break up the list of all parent classes and
+                # match parent class with child class
                 i, j = 0, 0
 
                 while j < len(captures["class.parents"]):
-                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte < name_body[captures["class.name"][i]].start_byte:
+                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte \
+                            < name_body[captures["class.name"][i]].start_byte:
                         child_name = captures["class.name"][i].text.decode('utf-8')
                         parent_name = captures["class.parents"][j].text.decode('utf-8')
+
                         child_path = f"{file.replace(':', '.')}/{child_name}".replace('\\', '/')
-                        print(1, parent_name)
                         parent_path = self.parse_name(parent_name)
-                        if len(parent_path):
+                        if parent_path:
                             # Add edges to represent class hierarchy
                             self.graph.add_edge(child_path, parent_path[-1], type='Class Hierarchy')
-                        print(2, parent_path)
 
                         j += 1
                     else:
@@ -599,9 +602,7 @@ class SemanticGraphBuilder:
 
     def print_graph(self):
         # Extract node attributes (color, nesting) for visualization
-        node_labels = nx.get_node_attributes(self.graph, 'nesting')  # Get nesting levels of nodes
         node_colors = nx.get_node_attributes(self.graph, 'color')  # Get colors of nodes
-        edge_labels = nx.get_edge_attributes(self.graph, 'type')  # Get types of edges
 
         # Create a DOT (graph description) representation
         dot = nx.nx_pydot.to_pydot(self.graph)  # Convert the graph to a DOT format
@@ -653,6 +654,5 @@ if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one(input(), "graphs", gsave=False,
-                           gprint=True) # Call the build method with user input and enable graph printing
-    
+    builder.build_from_one(input("input path to your repo"), "graphs", gsave=False,
+                           gprint=True)  # Call the build method with user input and enable graph printing
