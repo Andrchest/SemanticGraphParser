@@ -4,7 +4,6 @@ from pprint import pprint  # For pretty-printing data structures
 import networkx as nx  # For creating and manipulating networks
 import tree_sitter_python as tspython  # Tree-sitter parser for Python
 from PIL import Image  # For image processing
-from fontTools.feaLib.builder import Builder  # For font building
 from tree_sitter import Language, Parser  # For parsing
 from os import listdir  # To list files in a directory
 from os.path import isfile, exists  # To check if a path is a file
@@ -61,16 +60,22 @@ class SemanticGraphBuilder:
         for file in self.files_to_parse:
             dct[file] = 0
         return dct
-    
-    def build(self, save_folder, gsave=False, gprint=False):
+
+    def get_import(self):
+        # only for debugging
+        for edge in self.graph.edges(data=True):
+            if edge[2]['type'] == "Import":
+                print(*edge)
+
+    def build(self, save_folder, gsave=False, gprint=False, debugging=0):
         # Build the semantic graph
-        # os.system(f"code2flow {self.path_to_repo} -o __temp__.json -q")  # Generate a flow graph
+        # os.system(f"code2flow {self.path_to_repo} -o __temp__.json -q")  # Generate a flow graph using console
         code2flow([self.path_to_repo], '__temp__.json', language="py", skip_parse_errors=True)
-        self.files_to_parse = self.find_files(self.path_to_repo)
-        self.already_checked = self.define_files_for_check() # Find files to parse
+        self.files_to_parse = self.find_files(self.path_to_repo)  # Find files to parse
+        self.already_checked = self.define_files_for_check()
         self.build_encapsulation_and_ownership()  # Build encapsulation and ownership relationships
-        self.build_import()  # Build import relationships
-        self.build_invoke()  # Build invoke relationships
+        self.build_import(debugging)  # Build import relationships
+        self.build_invoke(debugging)  # Build invoke relationships
         self.build_class_hierarchy()  # Build class hierarchy relationships
         self.delete_duplicate_edges()
         if gsave:
@@ -127,7 +132,7 @@ class SemanticGraphBuilder:
 
             definitions.sort(key=lambda x: x['for_sorting'])  # Sort definitions for processing
 
-            self.construct_graph(definitions, file)  # Construct the graph with the definitions
+            self.construct_graph(definitions, file, source_code)  # Construct the graph with the definitions
 
     def find_function_names(self, captures, definitions):
         # Find function names from captures and add them to definitions
@@ -183,7 +188,7 @@ class SemanticGraphBuilder:
                 )
         return definitions  # Return the updated definitions list
 
-    def construct_graph(self, definitions, source):
+    def construct_graph(self, definitions, source, source_code):
         # Construct the semantic graph from definitions
         counter = 0  # Initialize nesting counter
 
@@ -201,7 +206,7 @@ class SemanticGraphBuilder:
                     "/".join(path_to_object), nesting=counter, color=NODES_COLORS[object['type']],
                     start_byte=object['start_byte'], end_byte=object['end_byte'],
                     start_point=object['start_point'], end_point=object['end_point'],
-                    # body ????
+                    body=source_code[object['start_byte']: object['end_byte']]
                 )
 
                 # Add an edge indicating ownership and encapsulation in the hierarchy
@@ -217,30 +222,40 @@ class SemanticGraphBuilder:
             if counter < 0:  # Sanity check for invalid nesting
                 print("ERROR!")  # Print an error message if nesting is invalid
 
-    def build_import(self):
+    def get_imports_count(self):
+        ct = 0
+        for edge in self.graph.edges(data=True):
+            if edge[2]['type'] == 'Import':
+                ct += 1
+        return ct
+
+    def build_import(self, debugging=0):
         for file in self.files_to_parse:
             # Set the status of the current file as 1(in progress)
             self.already_checked[file] = 1
-            # Construnct import edges for the file
+            # Construct import edges for the file
             self.construct_import_for_file(file)
-    
+        if debugging:
+            print(self.get_imports_count())
+            self.get_import()
+
     def construct_import_for_file(self, file):
-        # Initialize array to collect all imports of a current file and imports of the "imported" files 
+        # Initialize array to collect all imports of a current file and imports of the "imported" files
         # (nested imports)
         instances_to_connect = []
 
         # Read the code and then parse it
         with open(file, 'r', errors='ignore') as f:
             source_code = f.read()
-        
+
         tree = self.parser.parse(bytes(source_code, 'utf-8'))
 
         # Initialize the list of all files with rewritten names
         repo_files = [file.replace("\\", '/').replace(':', '.') for file in
-                    self.files_to_parse]
+                      self.files_to_parse]
 
-        # Define queries: 
-        # query - standart "import" or "from smt import smt" 
+        # Define queries:
+        # query - standard "import" or "from smt import smt"
         query = self.py_language.query("""
         (import_statement
             name: (dotted_name) @file.name
@@ -252,7 +267,7 @@ class SemanticGraphBuilder:
         )              
         """)
 
-        # query_aliased - "import smth1 as smth2" or "from smth1 import smth2 as smth3" 
+        # query_aliased - "import smth1 as smth2" or "from smth1 import smth2 as smth3"
         query_aliased = self.py_language.query("""
         (import_statement
             name: (aliased_import) @file
@@ -291,96 +306,98 @@ class SemanticGraphBuilder:
 
         definitions = []
 
-        # For each type of captures build import edges and extened array of imports
-        if 'file.name' in captures.keys():
-            instances_to_connect += self.for_import(captures, 'file.name',
-                                                    source_code, repo_files, connect_with)
+        # For each type of captures build import edges and extended array of imports
+        try:
+            if 'file.name' in captures.keys():
+                instances_to_connect += self.for_import(captures, 'file.name',
+                                                        source_code, repo_files, connect_with)
 
-        if 'file' in captures_aliased.keys():
-            captures_aliased['file'] = [file.children[0] for file in captures_aliased['file']]
-            instances_to_connect += self.for_import(captures_aliased, 'file', 
-                                                    source_code, repo_files, connect_with)
+            if 'file' in captures_aliased.keys():
+                captures_aliased['file'] = [file.children[0] for file in captures_aliased['file']]
+                instances_to_connect += self.for_import(captures_aliased, 'file',
+                                                        source_code, repo_files, connect_with)
 
-        if 'script.name' in captures_wildcard.keys():
-            instances_to_connect += self.for_import(captures_wildcard, 'script.name', 
-                                                    source_code, repo_files, connect_with, for_wildcards=True)
+            if 'script.name' in captures_wildcard.keys():
+                instances_to_connect += self.for_import(captures_wildcard, 'script.name',
+                                                        source_code, repo_files, connect_with, for_wildcards=True)
+            if 'script.name' in captures.keys():
+                instances_to_connect += self.for_import_from(captures,
+                                                             'imports', 'instance', source_code, definitions, file)
+                instances_to_connect += self.for_import_from(captures,
+                                                             'script.name', 'file', source_code, definitions, file)
 
-        if 'script.name' in captures.keys():
-            instances_to_connect += self.for_import_from(captures, 
-                                                        'imports', 'instance', source_code, definitions, file)
-            instances_to_connect += self.for_import_from(captures,
-                                                        'script.name', 'file', source_code, definitions, file)
+            if 'script.name' in captures_aliased.keys():
+                captures_aliased['imports'] = [instance.children[0] for instance in captures_aliased['imports']]
+                instances_to_connect += self.for_import_from(captures_aliased,
+                                                             'imports', 'instance', source_code, definitions, file)
+                instances_to_connect += self.for_import_from(captures_aliased,
+                                                             'script.name', 'file', source_code, definitions, file)
 
-        if 'script.name' in captures_aliased.keys():
-            captures_aliased['imports'] = [instance.children[0] for instance in captures_aliased['imports']]
-            instances_to_connect += self.for_import_from(captures_aliased,
-                                                        'imports', 'instance', source_code, definitions, file)
-            instances_to_connect += self.for_import_from(captures_aliased,
-                                                        'script.name', 'file', source_code, definitions, file)
+            if 'script.name' in captures_with_dots.keys():
+                instances_to_connect += self.for_import_from(captures_with_dots,
+                                                             'imports', 'instance', source_code, definitions, file)
+                instances_to_connect += self.for_import_from(captures_with_dots,
+                                                             'script.name', 'file', source_code, definitions, file)
 
-        if 'script.name' in captures_with_dots.keys():
-            instances_to_connect += self.for_import_from(captures_with_dots,
-                                                        'imports', 'instance', source_code, definitions, file)
-            instances_to_connect += self.for_import_from(captures_with_dots,
-                                                        'script.name', 'file', source_code, definitions, file)
+            definitions.sort(key=lambda x: x['start_byte'])  # Sort definitions by start byte
 
-        definitions.sort(key=lambda x: x['start_byte'])  # Sort definitions by start byte
+            current_path = []  # Initialize current path for imports
 
-        current_path = []  # Initialize current path for imports
-
-        # Define file names and objects form these files
-        for object in definitions:
-            # If object's type - file, current_path should contain only its name
-            if object['type'] == 'file':
-                current_path = [object['name']]
-            else:
-                # Check if file is from repo
-                if current_path[0] in repo_files:
-                    # If object's type is instance, concatenate the the current_path
-                    current_path.append(object['name'])
-                    # Find the appropriate file from which the instance is imported (nested imports) and add
-                    # an edge
-                    self.additional_imports(object['name'], connect_with,
-                                            instances_to_connect, namespace=current_path[0])
-                    # Delete the instance name
-                    current_path.pop()
-
+            # Define file names and objects form these files
+            for object in definitions:
+                # If object's type - file, current_path should contain only its name
+                if object['type'] == 'file':
+                    current_path = [object['name']]
+                else:
+                    # Check if file is from repo
+                    if current_path[0] in repo_files:
+                        # If object's type is instance, concatenate the current_path
+                        current_path.append(object['name'])
+                        # Find the appropriate file from which the instance is imported (nested imports) and add
+                        # an edge
+                        self.additional_imports(object['name'], connect_with,
+                                                instances_to_connect, namespace=current_path[0])
+                        # Delete the instance name
+                        current_path.pop()
+        except RecursionError as error:
+            print("Your repo may have circular import or contains instances with it")
+            print(f"The last two files in it are {error.args[0]} and {error.args[1]}")
         # Set file status as 2 (already checked)
         self.already_checked[file] = 2
 
         # Add edges from the nested imports
         for object in instances_to_connect:
             self.graph.add_edge(connect_with, object, type='Import')
-        
+
         # Pass the list of current file imports for the next file, if the func was called recursively
-        return  instances_to_connect
+        return instances_to_connect
 
     def define_file_path(self, name, current_path):
-        # Define a path to folder in which file is located (file means "file to which we import)
+        # Define a path to folder in which file is located (file means "file to which we import")
         folder = '\\'.join(current_path.split('\\')[:-1]).replace('.', ':')
-        
+
         # If the file name contain dots, go tho the upper folders from the current one
         while len(name) != 0 and name[0] == '.':
             # Delete one dot form the name
             name = name[1:]
             # Go upper on one level from the folder
             folder = '\\'.join(folder.split('\\')[:-1])
-        
-        # Check if in the file name exsists on the current folder level
+
+        # Check if in the file name exists on the current folder level
         if exists(folder + '\\' + name + '.py'):
-            # If it exsists, connect it
+            # If it exists, connect it
             return folder.replace('\\', '/').replace(':', '.') + '/' + name.replace('\\', '/') + '.py'
 
-        # Check if the file name exsists on a higher level
+        # Check if the file name exists on a higher level
         if exists('\\'.join(folder.split('\\')[:-1]) + '\\' + name + '.py'):
             return '/'.join(folder.split('\\')[:-1]).replace(':', '.') + '/' + name.replace('\\', '/') + '.py'
-        
+
         # In other case it should be located at the highest level
         return self.path_to_repo.replace('\\', '/').replace(':', '.') + '/' + name.replace('\\', '/') + '.py'
 
     def for_import(self, dct, key_name, source_code, repo_files, connect_with, for_wildcards=False):
         # Process import statements and add edges to the graph
-        for_future_connection = [] # Initialize the list of imports
+        for_future_connection = []  # Initialize the list of imports
 
         for file in dct[key_name]:
             # Extract the source file name from the import statement
@@ -398,10 +415,10 @@ class SemanticGraphBuilder:
                     self.already_checked[file_name] = 1
                     for_future_connection += self.construct_import_for_file(file_name)
                 # If its status is "in progress" rise an error of circular import
-                elif self.already_checked[file_name] == 1: 
+                elif self.already_checked[file_name] == 1:
                     # Define the last two names of the circle
-                    raise RuntimeError(str(connect_with) + " " + str(file_name))
-                
+                    raise RecursionError(str(connect_with), str(file_name))
+
                 # If file is imported with wildcard, connect all its instances with the current file
                 if not for_wildcards:
                     self.graph.add_edge(connect_with, source_file, type="Import")
@@ -409,7 +426,7 @@ class SemanticGraphBuilder:
                 else:
                     # For wildcard imports, connect to all out edges of the source file
                     for node in self.graph.out_edges(source_file):
-                        self.graph.add_edge(connect_with, node[1], type="Import") 
+                        self.graph.add_edge(connect_with, node[1], type="Import")
                         for_future_connection.append(node[1])
                 self.additional_imports(source_file, connect_with, [])
 
@@ -428,17 +445,19 @@ class SemanticGraphBuilder:
                 while len(name) != 0 and name[0] == '.':
                     prefix_dots_count += 1
                     name = name[1:]
-                
+
                 # Define the path to the file and its "normal name" in the system
                 name = self.define_file_path('.' * (prefix_dots_count - 1) + (name.replace('.', '\\')), path)
                 file_name = name.replace('.', ':').replace('/', chr(92))[:-3] + '.py'
+
                 # Check its status and rise an error in the case of circular import
                 if file_name in self.files_to_parse and self.already_checked[file_name] == 0:
                     self.already_checked[file_name] = 1
                     for_future_connection += self.construct_import_for_file(file_name)
+
                 elif file_name in self.files_to_parse and self.already_checked[file_name] == 1:
                     # If the file does not import itself rise an error
-                    if path != file_name: raise RecursionError(str(path) + " " + str(file_name))
+                    if path != file_name: raise RecursionError(str(path), str(file_name))
 
             # Append the definition to the definitions list
             definitions.append({
@@ -448,7 +467,7 @@ class SemanticGraphBuilder:
             })
 
         return for_future_connection
-    
+
     def additional_imports(self, name, connect_with, to_connect, namespace=None):
         # If name is file connect all its imports with the current file
         if name.split('/')[-1][-3:] == '.py':
@@ -456,28 +475,30 @@ class SemanticGraphBuilder:
             for edge in self.graph.out_edges(name, data=True):
                 if edge[2]['type'] == 'Import':
                     self.graph.add_edge(connect_with, edge[1], type='Import')
+
         else:
-            # Initialize import and encapsuled edges
+            # Initialize import and encapsulated edges
             imported = []
-            encapsuled = []
+            encapsulated = []
             for edge in self.graph.out_edges(namespace, data=True):
                 if edge[2]['type'] == 'Import':
                     imported.append(edge[1])
                 elif edge[2]['type'] == 'Encapsulation':
-                    encapsuled.append(edge[1])
-            # Check if the name exsists in the file
-            if namespace + '/' + name in encapsuled:
+                    encapsulated.append(edge[1])
+            # Check if the name exists in the file
+            if namespace + '/' + name in encapsulated:
                 self.graph.add_edge(connect_with, namespace + '/' + name, type="Import")
                 to_connect.append(namespace + '/' + name)
+
             else:
-                # If the name is not in encapsuled find a file in which it is encapsuled
+                # If the name is not in encapsulated find a file in which it is encapsulated
                 for imp in imported:
-                    # Check if it is imported or encapsuled
+                    # Check if it is imported or encapsulated
                     if name == imp.split('/')[-1]:
                         self.graph.add_edge(connect_with, imp, type="Import")
                     elif imp[-3:] == '.py':
                         self.additional_imports(name, connect_with, to_connect, namespace=imp)
- 
+
     def parse_name(self, name):
         result = []  # List to store matching node names
         # Format the name for the graph
@@ -486,7 +507,7 @@ class SemanticGraphBuilder:
         partial_name = partial_name.replace('/(global)', '')  # Remove '(global)'
 
         for element in self.graph.nodes:
-            if element.endswith("/" + partial_name):  # Check if node matches the formatted name
+            if element.endswith(partial_name):  # Check if node matches the formatted name
                 result.append(element)  # Add matching node to the result
 
         return result  # Return the list of matching nodes
@@ -569,16 +590,16 @@ class SemanticGraphBuilder:
                 i, j = 0, 0
 
                 while j < len(captures["class.parents"]):
-                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte < name_body[captures["class.name"][i]].start_byte:
+                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte < name_body[
+                        captures["class.name"][i]].start_byte:
                         child_name = captures["class.name"][i].text.decode('utf-8')
                         parent_name = captures["class.parents"][j].text.decode('utf-8')
                         child_path = f"{file.replace(':', '.')}/{child_name}".replace('\\', '/')
-                        print(1, parent_name)
+
                         parent_path = self.parse_name(parent_name)
                         if len(parent_path):
                             # Add edges to represent class hierarchy
                             self.graph.add_edge(child_path, parent_path[-1], type='Class Hierarchy')
-                        print(2, parent_path)
 
                         j += 1
                     else:
@@ -599,9 +620,7 @@ class SemanticGraphBuilder:
 
     def print_graph(self):
         # Extract node attributes (color, nesting) for visualization
-        node_labels = nx.get_node_attributes(self.graph, 'nesting')  # Get nesting levels of nodes
         node_colors = nx.get_node_attributes(self.graph, 'color')  # Get colors of nodes
-        edge_labels = nx.get_edge_attributes(self.graph, 'type')  # Get types of edges
 
         # Create a DOT (graph description) representation
         dot = nx.nx_pydot.to_pydot(self.graph)  # Convert the graph to a DOT format
@@ -640,10 +659,6 @@ class SemanticGraphBuilder:
         name = f'{self.path_to_repo.split(chr(92))[-1]}.gml'
         nx.write_gml(self.graph, save_folder + "//" + name)
 
-    def print_nodes(self):
-        # Print each node and its attributes in the graph
-        for node in self.graph.nodes:
-            print(node, '-------------------->', self.graph.nodes[node])  # Print node and its attributes
 
     def end(self):
         os.remove("__temp__.json")
@@ -654,5 +669,4 @@ if __name__ == "__main__":
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
     builder.build_from_one(input(), "graphs", gsave=False,
-                           gprint=True) # Call the build method with user input and enable graph printing
-    
+                           gprint=True)  # Call the build method with user input and enable graph printing
