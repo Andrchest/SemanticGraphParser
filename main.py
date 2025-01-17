@@ -121,8 +121,8 @@ class SemanticGraphBuilder:
 
             captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
 
-            for x in captures:
-                captures[x].sort(key=lambda x: x.start_byte)  # Sort captures by start byte
+            for el in captures:
+                captures[el].sort(key=lambda x: x.start_byte)  # Sort captures by start byte
 
             definitions = []  # Initialize a list to hold definitions
 
@@ -578,26 +578,30 @@ class SemanticGraphBuilder:
 
             captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
 
-            for x in captures:
-                captures[x].sort(key=lambda x: x.start_point)  # Sort captures by start byte
+            for el in captures:
+                captures[el].sort(key=lambda x: x.start_point)  # Sort captures by start byte
 
-            name_body = dict()
-
+            # if there are child classes in current file, extract their parents
             if "class.parents" in captures.keys():
+                name_body = dict()  # dict to store the parameters of body of each class
+
                 for i in range(len(captures["class.name"])):
                     name_body[captures["class.name"][i]] = captures["class.body"][i]
 
+                # use Two pointers technique to break up the list of all parent classes and
+                # match parent class with child class
                 i, j = 0, 0
 
                 while j < len(captures["class.parents"]):
-                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte < name_body[
-                        captures["class.name"][i]].start_byte:
+                    if captures["class.name"][i].start_byte < captures["class.parents"][j].start_byte \
+                            < name_body[captures["class.name"][i]].start_byte:
                         child_name = captures["class.name"][i].text.decode('utf-8')
                         parent_name = captures["class.parents"][j].text.decode('utf-8')
+
                         child_path = f"{file.replace(':', '.')}/{child_name}".replace('\\', '/')
 
                         parent_path = self.parse_name(parent_name)
-                        if len(parent_path):
+                        if parent_path:
                             # Add edges to represent class hierarchy
                             self.graph.add_edge(child_path, parent_path[-1], type='Class Hierarchy')
 
