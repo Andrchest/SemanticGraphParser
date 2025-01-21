@@ -5,8 +5,8 @@ import networkx as nx  # For creating and manipulating networks
 import tree_sitter_python as tspython  # Tree-sitter parser for Python
 from PIL import Image  # For image processing
 from tree_sitter import Language, Parser  # For parsing
-from os import listdir  # To list files in a directory
-from os.path import isfile, exists  # To check if a path is a file
+from os import listdir as listdir2  # To list files in a directory
+from os.path import isfile as isfile2, exists as exists2  # To check if a path is a file
 from code2flow import code2flow  # To generate call graph
 
 SUPPORTED_LANGUAGES = [".py"]  # Supported programming languages
@@ -36,6 +36,26 @@ EDGES_STYLES = {
     'Class Hierarchy': 'dashed'
 }
 
+def to_mock_windows(p: str) -> str:
+    g = p.split("/")
+    if len(g[0]) == 0:
+        g[0] = "C:"
+    else:
+        g = ["C:"] + g
+    return "\\".join(g)
+
+def to_normal_p(p: str) -> str:
+    return "/".join(p.removeprefix("C:").split("\\"))
+
+
+def isfile(s: str):
+    return isfile2(to_normal_p(s))
+
+def exists(s: str):
+    return exists2(to_normal_p(s))
+
+def listdir(s: str):
+    return listdir2(to_normal_p(s))
 
 class SemanticGraphBuilder:
     def __init__(self):
@@ -52,7 +72,8 @@ class SemanticGraphBuilder:
 
     def build_from_one(self, path_to_repo, save_folder, *args, **kwargs):
         # Build the graph from a single repository
-        self.path_to_repo = path_to_repo  # Set the repository path
+        #TODO: Costil to windows path
+        self.path_to_repo = to_mock_windows(path_to_repo)
         self.build(save_folder, *args, **kwargs)  # Build the graph
 
     def define_files_for_check(self):
@@ -70,7 +91,7 @@ class SemanticGraphBuilder:
     def build(self, save_folder, gsave=False, gprint=False, debugging=0):
         # Build the semantic graph
         # os.system(f"code2flow {self.path_to_repo} -o __temp__.json -q")  # Generate a flow graph using console
-        code2flow([self.path_to_repo], '__temp__.json', language="py", skip_parse_errors=True)
+        code2flow([to_normal_p(self.path_to_repo)], '__temp__.json', language="py", skip_parse_errors=True)
         self.files_to_parse = self.find_files(self.path_to_repo)  # Find files to parse
         self.already_checked = self.define_files_for_check()
         self.build_encapsulation_and_ownership()  # Build encapsulation and ownership relationships
@@ -101,7 +122,7 @@ class SemanticGraphBuilder:
     def build_encapsulation_and_ownership(self):
         # Build encapsulation and ownership relationships from parsed files
         for file in self.files_to_parse:
-            with open(file, 'r', errors='ignore') as f:
+            with open(to_normal_p(file), 'r', errors='ignore') as f:
                 source_code = f.read()  # Read the source code from the file
             tree = self.parser.parse(bytes(source_code, 'utf-8'))  # Parse the source code
 
@@ -245,7 +266,7 @@ class SemanticGraphBuilder:
         instances_to_connect = []
 
         # Read the code and then parse it
-        with open(file, 'r', errors='ignore') as f:
+        with open(to_normal_p(file), 'r', errors='ignore') as f:
             source_code = f.read()
 
         tree = self.parser.parse(bytes(source_code, 'utf-8'))
@@ -563,7 +584,7 @@ class SemanticGraphBuilder:
 
     def build_class_hierarchy(self):
         for file in self.files_to_parse:
-            with open(file, 'r', errors='ignore') as f:
+            with open(to_normal_p(file), 'r', errors='ignore') as f:
                 source_code = f.read()  # Read the source code from the file
             tree = self.parser.parse(bytes(source_code, 'utf-8'))  # Parse the source code
 
@@ -672,5 +693,5 @@ if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one(input(), "graphs", gsave=False,
+    builder.build_from_one("/Users/konstfed/Documents/diplom/SemanticGraphParser/data/dreamtalk", "graphs", gsave=False,
                            gprint=True)  # Call the build method with user input and enable graph printing
