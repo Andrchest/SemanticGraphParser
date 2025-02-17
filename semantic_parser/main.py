@@ -689,9 +689,17 @@ class SemanticGraphBuilder:
         os.remove("__temp__.json")
 
 
+# if __name__ == "__main__":
+#     # Main entry point for the script.
+#     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
+#     # Build the semantic graph from a user-provided repository path and display the graph
+#     builder.build_from_one("/Users/konstfed/Documents/diplom/SemanticGraphParser/data/dreamtalk", "graphs", gsave=False,
+#                            gprint=True)  # Call the build method with user input and enable graph printing
+
+
 if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one("/Users/konstfed/Documents/diplom/SemanticGraphParser/data/dreamtalk", "graphs", gsave=False,
+    builder.build_from_one("/home/konstfed/Documents/diplom/RAGC/data/repositories/test_repo", "graphs", gsave=False,
                            gprint=True)  # Call the build method with user input and enable graph printing
