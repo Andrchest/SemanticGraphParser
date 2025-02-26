@@ -131,13 +131,13 @@ class SemanticGraphBuilder:
             (class_definition
                 name: (identifier) @class.name
                 body: (block) @class.body
-            )
+            ) @class.signature
 
             (function_definition
                 name: (identifier) @func.name
                 parameters: (parameters) @func.parameters
                 body: (block) @func.body
-            )
+            ) @func.signature
             """)
 
             captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
@@ -161,6 +161,8 @@ class SemanticGraphBuilder:
             for i in range(len(captures["func.name"])):
                 definitions.append(
                     {
+                        'signature_start_byte': captures["func.signature"][i].start_byte,
+                        'signature_end_byte': captures["func.signature"][i].end_byte,
                         'name': captures["func.name"][i].text.decode('utf-8'),  # Function name
                         'start_byte': captures["func.body"][i].start_byte,  # Start byte of the function body
                         'nesting': 0,  # Nesting level
@@ -188,6 +190,8 @@ class SemanticGraphBuilder:
             for i in range(len(captures["class.name"])):
                 definitions.append(
                     {
+                        'signature_start_byte': captures["class.signature"][i].start_byte,
+                        'signature_end_byte': captures["class.signature"][i].end_byte,
                         'name': captures["class.name"][i].text.decode('utf-8'),  # Class name
                         'start_byte': captures["class.body"][i].start_byte,  # Start byte of the class body
                         'nesting': 0,  # Nesting level
@@ -227,7 +231,7 @@ class SemanticGraphBuilder:
                     "/".join(path_to_object), nesting=counter, color=NODES_COLORS[object['type']],
                     start_byte=object['start_byte'], end_byte=object['end_byte'],
                     start_point=object['start_point'], end_point=object['end_point'],
-                    body=source_code[object['start_byte']: object['end_byte']]
+                    body=source_code[object['signature_start_byte']: object['end_byte']],
                 )
 
                 # Add an edge indicating ownership and encapsulation in the hierarchy
@@ -648,7 +652,7 @@ class SemanticGraphBuilder:
         node_colors = nx.get_node_attributes(self.graph, 'color')  # Get colors of nodes
 
         # Create a DOT (graph description) representation
-        dot = nx.nx_pydot.to_pydot(self.graph)  # Convert the graph to a DOT format
+        dot = nx.nx_pydot.to_pydot(self.graph)  # Coxnvert the graph to a DOT format
 
         # Set node styles, colors, and labels
         for node in self.graph.nodes():
