@@ -161,6 +161,8 @@ class SemanticGraphBuilder:
             for i in range(len(captures["func.name"])):
                 definitions.append(
                     {
+                        'signature_start_point': captures["func.signature"][i].start_point,
+                        'signature_end_point': captures["func.signature"][i].end_point,
                         'signature_start_byte': captures["func.signature"][i].start_byte,
                         'signature_end_byte': captures["func.signature"][i].end_byte,
                         'name': captures["func.name"][i].text.decode('utf-8'),  # Function name
@@ -190,6 +192,8 @@ class SemanticGraphBuilder:
             for i in range(len(captures["class.name"])):
                 definitions.append(
                     {
+                        'signature_start_point': captures["class.signature"][i].start_point,
+                        'signature_end_point': captures["class.signature"][i].end_point,
                         'signature_start_byte': captures["class.signature"][i].start_byte,
                         'signature_end_byte': captures["class.signature"][i].end_byte,
                         'name': captures["class.name"][i].text.decode('utf-8'),  # Class name
@@ -230,7 +234,7 @@ class SemanticGraphBuilder:
                 self.graph.add_node(
                     "/".join(path_to_object), nesting=counter, color=NODES_COLORS[object['type']],
                     start_byte=object['start_byte'], end_byte=object['end_byte'],
-                    start_point=object['start_point'], end_point=object['end_point'],
+                    start_point=object['signature_start_point'], end_point=object['end_point'],
                     body=source_code[object['signature_start_byte']: object['end_byte']],
                 )
 
