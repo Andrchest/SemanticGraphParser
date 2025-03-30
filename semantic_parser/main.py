@@ -138,24 +138,6 @@ class SemanticGraphBuilder:
                 parameters: (parameters) @func.parameters
                 body: (block) @func.body
             ) @func.signature
-                                           
-            ;; Capture function docstrings
-            (function_definition
-                body: (block
-                    (expression_statement 
-                        (string) @func.docstring
-                    )?
-                )
-            ) @func.body
-
-            ;; Capture class docstrings
-            (class_definition
-                body: (block
-                    (expression_statement 
-                        (string) @class.docstring
-                    )?
-                )
-            ) @class.body
             """)
 
             captures = query.captures(tree.root_node)  # Execute the query on the parsed tree
@@ -177,43 +159,29 @@ class SemanticGraphBuilder:
         # Find function names from captures and add them to definitions
         if "func.name" in captures.keys():
             for i in range(len(captures["func.name"])):
-                func_name = captures["func.name"][i].text.decode('utf-8')
-                func_body_start = captures["func.body"][i].start_byte
-                func_body_end = captures["func.body"][i].end_byte
-
-                docstring = ""
-                if "docstring" in captures.keys():
-                    for j in range(len(captures["func.docstring"])):
-                        docstring_node = captures["func.docstring"][j]
-                        if func_body_start <= docstring_node.start_byte < func_body_end:
-                            docstring = docstring_node.text.decode('utf-8')
-                            break  # Take the first docstring found
-
                 definitions.append(
                     {
                         'signature_start_point': captures["func.signature"][i].start_point,
                         'signature_end_point': captures["func.signature"][i].end_point,
                         'signature_start_byte': captures["func.signature"][i].start_byte,
                         'signature_end_byte': captures["func.signature"][i].end_byte,
-                        'name': func_name,  # Function name
-                        'docstring': docstring,
-                        'start_byte': func_body_start,
+                        'name': captures["func.name"][i].text.decode('utf-8'),  # Function name
+                        'start_byte': captures["func.body"][i].start_byte,  # Start byte of the function body
                         'nesting': 0,  # Nesting level
                         'type': 'function',  # Type of definition
-                        'end_byte': func_body_end,
+                        'end_byte': captures["func.body"][i].end_byte,  # End byte of the function body
                         'start_point': captures["func.body"][i].start_point,  # Start point of the function body
                         'end_point': captures["func.body"][i].end_point,  # End point of the function body
-                        'for_sorting': [func_body_start, 0]  # For sorting purposes
+                        'for_sorting': [captures["func.body"][i].start_byte, 0]  # For sorting purposes
                     }
                 )
                 definitions.append(
                     {
-                        'name': func_name,  # Function name
-                        'docstring': docstring,
-                        'end_byte': func_body_end,  # End byte of the function body
+                        'name': captures["func.name"][i].text.decode('utf-8'),  # Function name
+                        'end_byte': captures["func.body"][i].end_byte,  # End byte of the function body
                         'nesting': 1,  # Nesting level
                         'type': "function",  # Type of definition
-                        'for_sorting': [func_body_end, 1]  # For sorting purposes
+                        'for_sorting': [captures["func.body"][i].end_byte, 1]  # For sorting purposes
                     }
                 )
         return definitions  # Return the updated definitions list
@@ -222,43 +190,29 @@ class SemanticGraphBuilder:
         # Find class names from captures and add them to definitions
         if "class.name" in captures.keys():
             for i in range(len(captures["class.name"])):
-                class_name = captures["class.name"][i].text.decode('utf-8')
-                class_body_start = captures["class.body"][i].start_byte
-                class_body_end = captures["class.body"][i].end_byte
-
-                docstring = ""
-                if "class.docstring" in captures.keys():
-                    for j in range(len(captures["class.docstring"])):
-                        docstring_node = captures["class.docstring"][j]
-                        if class_body_start <= docstring_node.start_byte < class_body_end:
-                            docstring = docstring_node.text.decode('utf-8')
-                            break
-    
                 definitions.append(
                     {
                         'signature_start_point': captures["class.signature"][i].start_point,
                         'signature_end_point': captures["class.signature"][i].end_point,
                         'signature_start_byte': captures["class.signature"][i].start_byte,
                         'signature_end_byte': captures["class.signature"][i].end_byte,
-                        'name': class_name,
-                        'docstring': docstring,
-                        'start_byte': class_body_start,
+                        'name': captures["class.name"][i].text.decode('utf-8'),  # Class name
+                        'start_byte': captures["class.body"][i].start_byte,  # Start byte of the class body
                         'nesting': 0,  # Nesting level
                         'type': 'class',  # Type of definition
-                        'end_byte': class_body_end,
+                        'end_byte': captures["class.body"][i].end_byte,  # End byte of the class body
                         'start_point': captures["class.body"][i].start_point,  # Start point of the class body
                         'end_point': captures["class.body"][i].end_point,  # End point of the class body
-                        'for_sorting': [class_body_end, 0]  # For sorting purposes
+                        'for_sorting': [captures["class.body"][i].start_byte, 0]  # For sorting purposes
                     }
                 )
                 definitions.append(
                     {
-                        'name': class_name,
-                        'docstring': docstring,
-                        'end_byte': class_body_end,
+                        'name': captures["class.name"][i].text.decode('utf-8'),  # Class name
+                        'end_byte': captures["class.body"][i].end_byte,  # End byte of the class body
                         'nesting': 1,  # Nesting level
                         'type': "class",  # Type of definition
-                        'for_sorting': [class_body_end, 1]  # For sorting purposes
+                        'for_sorting': [captures["class.body"][i].end_byte, 1]  # For sorting purposes
                     }
                 )
         return definitions  # Return the updated definitions list
@@ -755,5 +709,5 @@ if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one("/Users/konstfed/Documents/diplom/SemanticGraphParser/data/dreamtalk", "graphs", gsave=True,
+    builder.build_from_one("/home/konstfed/Documents/diplom/RAGC/data/repositories/test_repo", "graphs", gsave=False,
                            gprint=True)  # Call the build method with user input and enable graph printing
