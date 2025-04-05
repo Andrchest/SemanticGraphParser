@@ -111,7 +111,7 @@ class SemanticGraphBuilder:
 
         for file in listdir(path):
             current_instance = path + "\\" + file  # Construct the full file path
-            if not exists(file):
+            if not exists(current_instance):
                 continue
 
             if isfile(current_instance) and file[-3:] in SUPPORTED_LANGUAGES:
