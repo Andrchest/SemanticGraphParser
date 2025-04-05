@@ -111,6 +111,8 @@ class SemanticGraphBuilder:
 
         for file in listdir(path):
             current_instance = path + "\\" + file  # Construct the full file path
+            if not exists(file):
+                continue
 
             if isfile(current_instance) and file[-3:] in SUPPORTED_LANGUAGES:
                 files.append(current_instance)  # Add supported files to the list
@@ -390,7 +392,7 @@ class SemanticGraphBuilder:
                         current_path.pop()
         except RecursionError as error:
             print("Your repo may have circular import or contains instances with it")
-            print(f"The last two files in it are {error.args[0]} and {error.args[1]}")
+            # print(f"The last two files in it are {error.args[0]} and {error.args[1]}")
         # Set file status as 2 (already checked)
         self.already_checked[file] = 2
 
@@ -709,5 +711,5 @@ if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one("/Users/konstfed/Documents/diplom/RAGC/data/evocodebench/repos/Source_Code/Scientific-Engineering/pymc", "graphs", gsave=False,
+    builder.build_from_one("/Users/konstfed/Documents/diplom/RAGC/data/evocodebench/repos/Source_Code/Database/alembic", "graphs", gsave=False,
                            gprint=True)  # Call the build method with user input and enable graph printing
