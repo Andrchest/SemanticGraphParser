@@ -122,9 +122,9 @@ class SemanticGraphBuilder:
     def build_encapsulation_and_ownership(self):
         # Build encapsulation and ownership relationships from parsed files
         for file in self.files_to_parse:
-            with open(to_normal_p(file), 'r', errors='ignore') as f:
+            with open(to_normal_p(file), 'rb') as f:
                 source_code = f.read()  # Read the source code from the file
-            tree = self.parser.parse(bytes(source_code, 'utf-8'))  # Parse the source code
+            tree = self.parser.parse(source_code)  # Parse the source code
 
             # Define a query to capture class and function definitions
             query = self.py_language.query("""
@@ -235,7 +235,7 @@ class SemanticGraphBuilder:
                     "/".join(path_to_object), nesting=counter, color=NODES_COLORS[object['type']],
                     start_byte=object['start_byte'], end_byte=object['end_byte'],
                     start_point=object['signature_start_point'], end_point=object['end_point'],
-                    body=source_code[object['signature_start_byte']: object['end_byte']],
+                    body=source_code[object['signature_start_byte']: object['end_byte']].decode('utf8'),
                 )
 
                 # Add an edge indicating ownership and encapsulation in the hierarchy
@@ -709,5 +709,5 @@ if __name__ == "__main__":
     # Main entry point for the script.
     builder = SemanticGraphBuilder()  # Create an instance of the SemanticGraphBuilder
     # Build the semantic graph from a user-provided repository path and display the graph
-    builder.build_from_one("/home/konstfed/Documents/diplom/RAGC/data/repositories/test_repo", "graphs", gsave=False,
+    builder.build_from_one("/Users/konstfed/Documents/diplom/RAGC/data/evocodebench/repos/Source_Code/Scientific-Engineering/pymc", "graphs", gsave=False,
                            gprint=True)  # Call the build method with user input and enable graph printing
